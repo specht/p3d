@@ -26,8 +26,10 @@ This file is part of p3d.
 
 import sys, os, time
 from p3d import vector as vector
-import bisect
+import p3d
+#import bisect
 import operator
+from copy import deepcopy as dcp
 
 class Tree(dict):
 	'''
@@ -44,8 +46,9 @@ class Tree(dict):
 			self.dimensions = {'x':[],'y':[],'z':[]}
 			self.information = {}
 			self.protein = protein
-			self.__version__ = 2.3
+			self.__version__ = '2.41a'
 			self.lookup = []
+			self.atoms = []
 			""" How many atoms on leaf ?"""
 		else:
 			## init new branching of old tree
@@ -82,6 +85,10 @@ class Tree(dict):
 		"""
 		self.lookup.append((index,atom.x,atom.y,atom.z))
 		# ><><>< can avoid to pass object <><><>
+		return
+
+	def addDummyAtom(self,x,y,z,index):
+		self.lookup.append((index,x,y,z))
 		return
 	
 	def getDimensions(self):
@@ -186,11 +193,12 @@ class Tree(dict):
 		self.kidz[1].lvl = self.lvl + 1
 		del self['bigger']
 		del self['smaller']
-		del self.lookup
+		if self.lvl != 0:
+			del self.lookup
 		del self.dimensions
 		return
 	
-	def query(self,Vector_a=vector.Vector(),Vector_b=vector.Vector(),radius=0):
+	def query(self,Vector_a=vector.Vector(),Vector_b=vector.Vector(),radius=0,returnIndices=False):
 		'''
 		Tree.query(Vector a, vector b, radius=(in A))
 		------------
@@ -213,15 +221,18 @@ class Tree(dict):
 		Nestedindcs = self.walk(bbox,indcs)
 		flattend = flattenNested(Nestedindcs)
 		atoms = []
-		for i in list(flattend):
-			if radius != 0:
-				#sphere collection
-				distance = Vector_a.evalDistance(self.protein.atoms[i],radius)
-				if 0 < distance <= radius:
+		if returnIndices == False:
+			for i in list(flattend):
+				if radius != 0:
+					#sphere collection
+					distance = Vector_a.evalDistance(self.protein.atoms[i],radius)
+					if 0 < distance <= radius:
+						atoms.append(self.protein.atoms[i])
+				else:
 					atoms.append(self.protein.atoms[i])
-			else:
-				atoms.append(self.protein.atoms[i])
-		return atoms
+			return atoms
+		else:
+			return flattend
 	
 	def walk(self,bbox,indcs):
 		#print bbox,indcs
@@ -265,6 +276,42 @@ class Tree(dict):
 		#exit(1)
 		return indcs
 	
+	def generateSurface(self,ListOfVectors,MinDistance,MaxDistance,MinDistanceOfSurfaceVectors):
+		assert isinstance (ListOfVectors[0],p3d.vector.Vector), "Cannot generate Surface, require a list of p3d vector(s) or atoms"
+		GridDimensions = {}
+		
+		SurfaceVectors = []
+		SurfaceOuter = set()
+		SurfaceInner = set()
+		
+		''' Collecting all atoms within Max and Min distance '''
+		for j,atom in enumerate(ListOfVectors):
+			positions = self.query(atom,radius=MaxDistance,returnIndices=True)
+			for pos in positions:
+				index,x,y,z = self.lookup[pos]
+				assert index==pos, 'Position missmatch'
+				d = atom.evalDistanceToCoordinates(x,y,z,MaxDistance)
+				if d:
+					if d >= MinDistance:
+						SurfaceOuter.add((x,y,z))
+					else:
+						SurfaceInner.add((x,y,z))
+		''' Generating Surface with distance between Gripoints at list MinDistanceOfSurfaceVectors '''
+		notInteresting = set()
+		print('REMARK outer {0}, inner {1}, outer-inner {2}'.format(len(SurfaceOuter),len(SurfaceInner),len(SurfaceOuter-SurfaceInner)))
+		for k,(x,y,z) in enumerate(SurfaceOuter-SurfaceInner):
+			t = p3d.vector.Vector(x,y,z)
+			if (x,y,z) not in notInteresting: 	
+				positions = self.query(t,radius=MinDistanceOfSurfaceVectors,returnIndices=True)
+				SurfaceVectors.append(t)
+				for pos in positions:
+					index,x,y,z = self.lookup[pos]
+					if t.evalDistanceToCoordinates(x,y,z,MinDistanceOfSurfaceVectors):
+						notInteresting.add((x,y,z))
+		return SurfaceVectors	
+
+""" END OF CLASS """
+
 def flattenNested(liste):
 	for element in liste:
 		if type(element) in [ tuple, list]:
