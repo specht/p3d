@@ -28,6 +28,7 @@ This file is part of p3d.
 
 
 import bisect, copy, string, re
+import p3d.vector
 
 class Parser:
     # atomic tokens are retained during tokenization
@@ -114,7 +115,7 @@ class Parser:
                     keyType = type(subKey)
                 else:
                     if (keyType != type(subKey)):
-                        raise Exception("Inconsistent types accross the " + key + "hash.")
+                        raise Exception("Inconsistent types accross the " + key + " hash.")
             self.repositoryMeta['type'][key] = keyType
             ''' e.g. non-aa-resname = <class 'str'> '''
             
@@ -156,6 +157,8 @@ class Parser:
                         if not (valueKey in self.repository):
                             raise Exception("Invalid argument type value of " + valueKey + ".")
                         argumentType = valueKey
+                    elif argumentType == 'point':
+                        argumentType = p3d.vector.Vector
                     else:
                         raise Exception("Invalid argument type " + argumentType + ".")
                     tokens.pop(0)
@@ -339,6 +342,33 @@ class Parser:
         
         return valueList, localTokens
     
+    def parseVector(self, tokens, valueType, key):
+        '''
+        parse (x, y, z)
+        '''
+        localTokens = copy.copy(tokens)
+        
+        coords = []
+        
+        if (len(localTokens) == 0 or localTokens[0] != '('):
+            raise Exception("Expected an opening '(' as part of a vector definition.")
+        localTokens.pop(0)
+        
+        for _ in range(3):
+            valueStart, localTokens = self.parseSingleValue(localTokens, valueType, key)
+            if valueStart == None:
+                raise Exception("Expected a number as part of a vector definition.")
+            coords.append(float(valueStart))
+            if _ < 2:
+                # pop comma
+                localTokens.pop(0)
+            
+        if (len(localTokens) == 0 or localTokens[0] != ')'):
+            raise Exception("Expected a closing ')' as part of a vector definition.")
+        localTokens.pop(0)
+        
+        return p3d.vector.Vector(coords[0], coords[1], coords[2]), localTokens
+    
     def parseSingleFunction(self, tokens, function):
         localTokens = copy.copy(tokens)
         localPattern = copy.copy(function['pattern'])
@@ -357,6 +387,9 @@ class Parser:
                 elif (type(argumentType) == str):
                     # it's a value of a certain type!
                     argumentValue, localTokens = self.parseSingleValue(localTokens, str, argumentType)
+                elif (argumentType == p3d.vector.Vector):
+                    # it's a point!
+                    argumentValue, localTokens = self.parseVector(localTokens, str, argumentType)
                 else:
                     argumentValue, localTokens = self.parseSingleValue(localTokens, argumentType, None)
                 if argumentValue == None:

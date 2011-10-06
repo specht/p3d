@@ -43,6 +43,8 @@ import p3d.parser
 hash_list = ['chain','atype','resid','resname','non-aa-resname',\
             'aa-resname','model','bkb','oxygen','altconf',
             'nitrogen','non-protein','alpha','protein','altConf']
+            
+CLOSE_TO_EPSILON = 0.0001            
 
 class Protein:
     '''
@@ -328,6 +330,7 @@ class Protein:
         
         info['functions'] = {}
         info['functions']['within {radius: float} of {centre: set}'] = self.collectSphereAtoms
+        info['functions']['close to {p: point}'] = self.collectAtomsCloseToPoint
         info['functions']['first residue of chain {chain: value of chain}'] = self.firstResidueOfChain
         info['functions']['last residue of chain {chain: value of chain}'] = self.lastResidueOfChain
         
@@ -414,6 +417,9 @@ class Protein:
         for atom in centre:
             collection |= set(self.BSPTree.query(atom,radius=radius))
         return collection
+    
+    def collectAtomsCloseToPoint(self, p=None):
+        return set(self.BSPTree.query(p, radius=2.0))
     
     def writeToFile(self,filename,includeOrgHeader=False):
         HEADER = [\
